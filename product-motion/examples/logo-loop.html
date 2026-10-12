@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Logo Loop</title>
+<style>
+  html, body { margin: 0; background: #F4F2EE; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1080"></canvas>
+<script type="module">
+// Starter: 2D logo reveal, 6 s seamless loop, 60 fps, 120 BPM (30 frames per beat).
+// Replace WORD, PROMISE and ACCENT. Every frame is a pure function of t.
+import { ease, seg, spring, rng, holdFor } from '../scripts/motion.js';
+
+const WORD = 'PRODUCT';
+const PROMISE = 'Does one thing, beautifully.';
+const ACCENT = '#D97757', INK = '#141414', PAPER = '#F4F2EE';
+const W = 1080, H = 1080, LOOP = 6, FPS = 60;
+
+const c = document.getElementById('c');
+const g = c.getContext('2d');
+g.font = '700 150px system-ui, -apple-system, Segoe UI, sans-serif';
+const letters = [...WORD];
+const adv = letters.map((ch) => g.measureText(ch).width);
+const total = adv.reduce((a, b) => a + b, 0) + (letters.length - 1) * -4;
+const x0 = (W - total) / 2, baseY = 560;
+
+function renderAt(t) {
+  t = ((t % LOOP) + LOOP) % LOOP;
+  const f = t * FPS;
+  g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+
+  // camera push during hold: 2%
+  const push = 1 + 0.02 * ease.inOutSine(seg(t, 1.5, 3.0)) * (1 - ease.move(seg(t, 4.5, 0.4)));
+  g.save(); g.translate(W / 2, H / 2); g.scale(push, push); g.translate(-W / 2, -H / 2);
+
+  // 1) Dot drops on an arc, lands on frame 30 (beat 1), squash 1.25x0.7, spring back
+  const dotX = x0 + total + 26, dotY = baseY - 10;
+  let dx = dotX, dy = dotY, sx = 1, sy = 1, dotR = 18;
+  if (f < 30) {
+    const u = f / 30, e = u * u;                 // gravity: ease-in
+    dx = dotX - 160 * (1 - u); dy = -60 + (dotY + 60) * e;
+    sx = 0.85; sy = 1.25;                        // stretch while falling
+  } else {
+    const k = spring((f - 30) / FPS, 0.5, 4);
+    sx = 1.25 + (1 - 1.25) * k; sy = 0.7 + (1 - 0.7) * k;
+  }
+  // 2) Dot stretches into underline (30 to 60), retracts 300 to 330, rises out 330 to 360
+  const grow = ease.move(seg(f, 34, 18)) * (1 - ease.move(seg(f, 300, 24)));
+  const lineW = grow * (total + 26);
+  const exitUp = ease.exit(seg(f, 336, 22));
+  dy -= exitUp * (dotY + 80);
+
+  g.fillStyle = ACCENT;
+  if (lineW > 1) {
+    const lh = 10;
+    g.fillRect(dotX - lineW, dotY + 30, lineW, lh);
+  }
+  g.save(); g.translate(dx, dy + dotR * (1 - sy)); g.scale(sx, sy);
+  g.beginPath(); g.arc(0, 0, dotR, 0, Math.PI * 2); g.fill(); g.restore();
+
+  // 3) Letters rise 24 px, 1 frame apart, spring damping 0.8; exit up 270+, 3 frames apart
+  g.font = '700 150px system-ui, -apple-system, Segoe UI, sans-serif';
+  g.textBaseline = 'alphabetic';
+  let x = x0;
+  letters.forEach((ch, i) => {
+    const kin = spring((f - 60 - i) / FPS, 0.8, 2.5);
+    const kout = ease.exit(seg(f, 270 + i * 3, 12));
+    const y = baseY + 24 * (1 - kin) - 140 * kout;
+    const a = Math.min(1, Math.max(0, (f - 60 - i) / 6)) * (1 - kout);
+    g.globalAlpha = a; g.fillStyle = INK; g.fillText(ch, x, y);
+    x += adv[i] - 4;
+  });
+
+  // 4) Promise: in at 120 (ease-out-expo), held >= holdFor(words), out at 270
+  const words = PROMISE.split(' ').length;
+  const inP = ease.enter(seg(f, 120, 24));
+  const outP = ease.exit(seg(f, 264, 12));
+  console.assert((264 - 144) / FPS >= holdFor(words), 'promise hold too short');
+  g.globalAlpha = inP * (1 - outP);
+  g.font = '400 40px system-ui, -apple-system, Segoe UI, sans-serif';
+  g.textAlign = 'center'; g.fillStyle = '#5A5650';
+  g.fillText(PROMISE, W / 2, baseY + 110 + 12 * (1 - inP) - 30 * outP);
+  g.textAlign = 'left'; g.globalAlpha = 1;
+  g.restore();
+
+  // grain 2%, seeded by frame index
+  const r = rng(Math.round(f) + 1);
+  g.fillStyle = 'rgba(0,0,0,0.02)';
+  for (let i = 0; i < 1800; i++) g.fillRect(r() * W, r() * H, 1.5, 1.5);
+}
+
+window.renderAt = renderAt;
+const q = new URLSearchParams(location.search);
+if (q.has('t')) { renderAt(parseFloat(q.get('t')) || 0); }
+else {
+  let t0 = null;
+  const loop = (ms) => { if (t0 === null) t0 = ms; renderAt((ms - t0) / 1000); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+window.__ready = true;
+</script>
+</body>
+</html>
